@@ -78,7 +78,7 @@ jobs:
 
   build-ios:
     name: Build (iOS Unsigned IPA)
-    runs-on: macos-14
+    runs-on: macos-26
     env:
       CONFIGURATION: Release
       TARGET_PLATFORM: iOS
@@ -115,7 +115,14 @@ jobs:
           buildName: MajdataPlay
           buildsPath: ${{ env.CONFIGURATION }}
 
-      # Step 2: Compile the Xcode project without code signing
+      # Step 2: Strip incompatible bitcode from all static libraries (.a)
+      - name: Strip bitcode from static libraries
+        run: |
+          echo "Stripping bitcode from all .a files in exported project..."
+          find "${{ env.CONFIGURATION }}/iOS" -name "*.a" -exec xcrun bitcode_strip -r {} -o {} \;
+          echo "Bitcode strip complete."
+          
+      # Step 3: Compile the Xcode project without code signing
       - name: Build Xcode Project (Unsigned)
         run: |
           set -euo pipefail
@@ -129,7 +136,7 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
 
-      # Step 3: Package .app into an unsigned .ipa
+      # Step 4: Package .app into an unsigned .ipa
       - name: Package Unsigned IPA
         run: |
           set -euo pipefail
