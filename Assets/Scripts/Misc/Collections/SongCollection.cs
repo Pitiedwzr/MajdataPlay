@@ -228,6 +228,10 @@ namespace MajdataPlay.Collections
             }
             SetCursor(hash, Sorted);
         }
+        public bool ContainsHash(string hash)
+        {
+            return Sorted.Any(x => x.Hash == hash);
+        }
         void SetCursor(string hash, ISongDetail[] dataSet)
         {
             var newIndex = dataSet.FindIndex(x => x.Hash == hash);

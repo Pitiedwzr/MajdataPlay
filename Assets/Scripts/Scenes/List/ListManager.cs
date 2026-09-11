@@ -18,6 +18,7 @@ using UnityEngine;
 using UnityEngine.Serialization;
 using LitMotion;
 using MajdataPlay.Diagnostics;
+using DelayType = Cysharp.Threading.Tasks.DelayType;
 #nullable enable
 namespace MajdataPlay.Scenes.List
 {
