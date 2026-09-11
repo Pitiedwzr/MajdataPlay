@@ -15,11 +15,6 @@ namespace MajdataPlay.Scenes.List
         bool _isSubmitting;
         bool _isCollapsed;
 
-        void Update()
-        {
-            MultiplayerSession.Pump();
-        }
-
         void OnGUI()
         {
             if (_isCollapsed)

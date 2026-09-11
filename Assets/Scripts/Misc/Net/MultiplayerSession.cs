@@ -19,7 +19,9 @@ namespace MajdataPlay.Net
             public string Code { get; init; }
             public string Name { get; init; }
         }
-        public static bool IsConnected => _socket?.IsAlive == true;
+        // WebSocket.IsAlive sends a ping and synchronously waits for a pong. This
+        // property is used by UI and input code, so it must only inspect local state.
+        public static bool IsConnected => _socket?.ReadyState == WebSocketState.Open;
         public static bool IsApplyingRemoteSelection { get; private set; }
         public static string? SelectedSongHash { get; private set; }
         public static long? ScheduledStartAtServerMs { get; private set; }
@@ -27,6 +29,7 @@ namespace MajdataPlay.Net
         public static event Action? StartScheduled;
 
         static readonly ConcurrentQueue<Action> _mainThreadActions = new();
+        const int MAX_MAIN_THREAD_ACTIONS_PER_FRAME = 64;
         static readonly Stopwatch _clock = Stopwatch.StartNew();
         static WebSocket? _socket;
         static double _serverOffsetMs;
@@ -69,7 +72,8 @@ namespace MajdataPlay.Net
 
         public static void Pump()
         {
-            while (_mainThreadActions.TryDequeue(out var action))
+            for (var i = 0; i < MAX_MAIN_THREAD_ACTIONS_PER_FRAME
+                && _mainThreadActions.TryDequeue(out var action); i++)
             {
                 action();
             }
