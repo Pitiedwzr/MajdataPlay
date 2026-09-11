@@ -510,7 +510,7 @@ namespace MajdataPlay.Scenes.List
         }
         void SetCursorInternal(string hash, bool disableAnimation, bool forceUpdate)
         {
-            if (!_currentCollection.Sorted.ContainsKey(hash))
+            if (!_currentCollection.ContainsKey(hash))
             {
                 return;
             }
