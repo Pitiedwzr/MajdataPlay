@@ -1,0 +1,153 @@
+name: Build Project
+run-name: MajdataPlay build
+
+on:
+  push:
+    branches: [ "dev", "main", "fastlane-ios", "test_workflow", "github-ci", "feature/multiplayer-sync" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+  UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+  UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+  UNITY_VERSION: 6000.3.17f1
+
+jobs:
+  build-windows:
+    name: Build (Windows)
+    runs-on: ubuntu-latest
+    env:
+      CONFIGURATION: Release
+      TARGET_PLATFORM: StandaloneWindows64
+
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Extract version from unity project
+        run: |
+          VERSION=$(grep -m1 'bundleVersion:' ProjectSettings/ProjectSettings.asset | awk '{print $2}')
+          VERSION_WITH_HASH="${VERSION}-$(date +%Y%m%d)-${GITHUB_SHA::7}"
+          echo "BUNDLE_VERSION_WITH_HASH=$VERSION_WITH_HASH" >> $GITHUB_ENV
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-${{ runner.os }}-${{ env.TARGET_PLATFORM }}-${{ hashFiles('ProjectSettings/ProjectVersion.txt', 'ProjectSettings/**', 'Packages/manifest.json', 'Packages/packages-lock.json') }}
+          restore-keys: |
+            Library-${{ runner.os }}-${{ env.TARGET_PLATFORM }}-
+
+      - name: Build Release
+        uses: game-ci/unity-builder@v4
+        with:
+          unityVersion: ${{ env.UNITY_VERSION }}
+          targetPlatform: ${{ env.TARGET_PLATFORM }}
+          versioning: Custom
+          version: ${{ env.BUNDLE_VERSION_WITH_HASH }}
+          buildName: MajdataPlay
+          buildsPath: ${{ env.CONFIGURATION }}
+
+      - name: Package output as zip
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          ZIP_NAME="MajdataPlay-Windows-${{ env.BUNDLE_VERSION_WITH_HASH }}.zip"
+          cd "${{ env.CONFIGURATION }}"
+          zip -qry "../out/${ZIP_NAME}" .
+          cd -
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: MajdataPlay-Windows
+          path: out/*
+          if-no-files-found: error
+          retention-days: 7
+
+  build-ios:
+    name: Build (iOS Unsigned IPA)
+    runs-on: macos-14
+    env:
+      CONFIGURATION: Release
+      TARGET_PLATFORM: iOS
+
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Extract version from unity project
+        run: |
+          VERSION=$(grep -m1 'bundleVersion:' ProjectSettings/ProjectSettings.asset | awk '{print $2}')
+          VERSION_WITH_HASH="${VERSION}-${GITHUB_SHA::7}"
+          echo "BUNDLE_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "BUNDLE_VERSION_WITH_HASH=$VERSION_WITH_HASH" >> $GITHUB_ENV
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-${{ runner.os }}-${{ env.TARGET_PLATFORM }}-${{ hashFiles('ProjectSettings/ProjectVersion.txt', 'ProjectSettings/**', 'Packages/manifest.json', 'Packages/packages-lock.json') }}
+          restore-keys: |
+            Library-${{ runner.os }}-${{ env.TARGET_PLATFORM }}-
+
+      # Step 1: Export Xcode project from Unity
+      - name: Export Unity to Xcode Project
+        uses: game-ci/unity-builder@v4
+        with:
+          unityVersion: ${{ env.UNITY_VERSION }}
+          targetPlatform: ${{ env.TARGET_PLATFORM }}
+          versioning: Custom
+          version: ${{ env.BUNDLE_VERSION }}
+          buildName: MajdataPlay
+          buildsPath: ${{ env.CONFIGURATION }}
+
+      # Step 2: Compile the Xcode project without code signing
+      - name: Build Xcode Project (Unsigned)
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project "${{ env.CONFIGURATION }}/iOS/MajdataPlay/Unity-iPhone.xcodeproj" \
+            -scheme Unity-iPhone \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath derived_data \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      # Step 3: Package .app into an unsigned .ipa
+      - name: Package Unsigned IPA
+        run: |
+          set -euo pipefail
+          mkdir -p out Payload
+          
+          # Find the compiled .app directory
+          APP_PATH=$(find derived_data -name "*.app" -type d | head -n 1)
+          echo "Found app at: $APP_PATH"
+          
+          # Copy to Payload and zip
+          cp -R "$APP_PATH" Payload/
+          zip -qry "out/MajdataPlay-iOS-${{ env.BUNDLE_VERSION_WITH_HASH }}-unsigned.ipa" Payload
+          rm -rf Payload
+
+      - name: Upload iOS IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: MajdataPlay-iOS-Unsigned
+          path: out/*.ipa
+          if-no-files-found: error
+          retention-days: 7
