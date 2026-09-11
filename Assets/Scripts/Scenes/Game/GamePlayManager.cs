@@ -1073,6 +1073,7 @@ namespace MajdataPlay.Scenes.Game
                     await UniTask.Yield(PlayerLoopTiming.LastPostLateUpdate);
                 }
                 _sceneSwitcher.SetLoadingText(string.Empty);
+                _timer = MajTimeline.CreateTimer();
             }
 
             _audioStartTime = (float)(_timer.ElapsedSecondsAsFloat + _audioSample.CurrentSec) + extraTime;

@@ -510,6 +510,10 @@ namespace MajdataPlay.Scenes.List
         }
         void SetCursorInternal(string hash, bool disableAnimation, bool forceUpdate)
         {
+            if (!_currentCollection.Sorted.ContainsKey(hash))
+            {
+                return;
+            }
             _currentCollection.SetCursor(hash);
             SlideListTo(_currentCollection.Index, disableAnimation, forceUpdate, DISPLAYER_ANIM_DURATION_MS);
         }

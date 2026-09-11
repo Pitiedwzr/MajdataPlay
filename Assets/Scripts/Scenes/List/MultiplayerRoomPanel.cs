@@ -13,6 +13,7 @@ namespace MajdataPlay.Scenes.List
         string _roomCode = string.Empty;
         string _status = "Create a room or enter a six-character room code.";
         bool _isSubmitting;
+        bool _isCollapsed;
 
         void Update()
         {
@@ -21,9 +22,26 @@ namespace MajdataPlay.Scenes.List
 
         void OnGUI()
         {
-            var panel = new Rect(20, 20, 330, 220);
+            if (_isCollapsed)
+            {
+                var label = MultiplayerSession.IsConnected ? "Multiplayer (Connected)" : "Multiplayer";
+                if (GUI.Button(new Rect(20, 20, 160, 30), label))
+                {
+                    _isCollapsed = false;
+                }
+                return;
+            }
+
+            var panel = new Rect(20, 20, 330, MultiplayerSession.IsConnected ? 150 : 250);
             GUI.Box(panel, "Multiplayer");
-            GUILayout.BeginArea(new Rect(35, 55, 300, 170));
+
+            if (GUI.Button(new Rect(panel.xMax - 75, panel.y + 4, 70, 20), "Minimize"))
+            {
+                _isCollapsed = true;
+                return;
+            }
+
+            GUILayout.BeginArea(new Rect(35, 50, 300, panel.height - 60));
             GUILayout.Label(_status);
             if (MultiplayerSession.IsConnected)
             {
@@ -76,6 +94,7 @@ namespace MajdataPlay.Scenes.List
                 _isSubmitting = true;
                 var room = await action();
                 _status = $"Connected to {room.Name} ({room.Code}).";
+                _isCollapsed = true;
             }
             catch (Exception exception)
             {

@@ -161,8 +161,38 @@ namespace MajdataPlay.Scenes.List
             _coverListManager.SongSelected += OnSongSelected;
             MultiplayerSession.SongSelected += OnMultiplayerSongSelected;
         }
-        void OnSongSelected(ISongDetail song) => MultiplayerSession.PublishSongSelection(song.Hash);
-        void OnMultiplayerSongSelected(string songHash) => _coverListManager.SetCursor(songHash, true, true);
+
+        CancellationTokenSource? _publishSongCts;
+
+        void OnSongSelected(ISongDetail song)
+        {
+            if (!MultiplayerSession.IsConnected || MultiplayerSession.IsApplyingRemoteSelection)
+            {
+                return;
+            }
+            _publishSongCts?.Cancel();
+            _publishSongCts?.Dispose();
+            _publishSongCts = new CancellationTokenSource();
+            PublishSongSelectionDebouncedAsync(song.Hash, _publishSongCts.Token).Forget();
+        }
+
+        async UniTaskVoid PublishSongSelectionDebouncedAsync(string hash, CancellationToken token)
+        {
+            try
+            {
+                await UniTask.Delay(150, DelayType.UnscaledDeltaTime, cancellationToken: token);
+                MultiplayerSession.PublishSongSelection(hash);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        void OnMultiplayerSongSelected(string songHash)
+        {
+            _publishSongCts?.Cancel();
+            _coverListManager.SetCursor(songHash, true, true);
+        }
 
         void DisplayUserInfo()
         {
@@ -205,6 +235,9 @@ namespace MajdataPlay.Scenes.List
             InputManager.UnbindAnyArea(OnAnyInput);
             Majdata<ListManager>.Free();
             MajEnv.SharedHttpClient.CancelPendingRequests();
+            _publishSongCts?.Cancel();
+            _publishSongCts?.Dispose();
+            _publishSongCts = null;
             _coverListManager.SongSelected -= OnSongSelected;
             MultiplayerSession.SongSelected -= OnMultiplayerSongSelected;
         }
@@ -500,6 +533,11 @@ namespace MajdataPlay.Scenes.List
         void StartGameScene()
         {
             _cts.Cancel();
+            _publishSongCts?.Cancel();
+            if (_coverListManager.SelectedSong is not null)
+            {
+                MultiplayerSession.PublishSongSelection(_coverListManager.SelectedSong.Hash);
+            }
             MajInstances.AudioManager.StopSFX("bgm_select.mp3");
             var list = new string[] { "track_start.wav", "track_start_2.wav", "track_start_3.wav" };
             MajInstances.AudioManager.PlaySFX(list[UnityEngine.Random.Range(0, list.Length)]);

@@ -78,6 +78,7 @@ namespace MajdataPlay
             MajTimeline.OnPreUpdate();
             InputManager.OnPreUpdate();
             _dummyTouchPanelRenderer.OnPreUpdate();
+            MultiplayerSession.Pump();
             try
             {
                 switch (SceneSwitcher.CurrentScene)

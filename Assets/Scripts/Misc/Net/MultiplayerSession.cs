@@ -81,6 +81,7 @@ namespace MajdataPlay.Net
             {
                 return;
             }
+            SelectedSongHash = songHash;
             Send(new JObject { ["type"] = "select_song", ["songHash"] = songHash });
         }
 
