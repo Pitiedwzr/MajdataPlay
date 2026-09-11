@@ -157,7 +157,11 @@ namespace MajdataPlay.Scenes.List
                 MajInstances.AudioManager.PlaySFX(list[UnityEngine.Random.Range(0, list.Length)]);
             }
             DisplayUserInfo();
+            _coverListManager.SongSelected += OnSongSelected;
+            MultiplayerSession.SongSelected += OnMultiplayerSongSelected;
         }
+        void OnSongSelected(ISongDetail song) => MultiplayerSession.PublishSongSelection(song.Hash);
+        void OnMultiplayerSongSelected(string songHash) => _coverListManager.SetCursor(songHash, true, true);
 
         void DisplayUserInfo()
         {
@@ -200,6 +204,8 @@ namespace MajdataPlay.Scenes.List
             InputManager.UnbindAnyArea(OnAnyInput);
             Majdata<ListManager>.Free();
             MajEnv.SharedHttpClient.CancelPendingRequests();
+            _coverListManager.SongSelected -= OnSongSelected;
+            MultiplayerSession.SongSelected -= OnMultiplayerSongSelected;
         }
         void Update()
         {
@@ -476,15 +482,21 @@ namespace MajdataPlay.Scenes.List
                 _collectionListManager.SlideDifficulty(-1);
                 var list = new string[] { "easy.wav", "basic.wav", "advanced.wav", "expert.wav", "master.wav", "remaster.wav", "original.wav" };
                 MajInstances.AudioManager.PlaySFX(list[(int)_listConfig.SelectedDiff]);
+                MultiplayerSession.SetDifficulty((int)_listConfig.SelectedDiff);
             }
             else if (a1State.PressedThisFrame)
             {
                 _collectionListManager.SlideDifficulty(1);
                 var list = new string[] { "easy.wav", "basic.wav", "advanced.wav", "expert.wav", "master.wav", "remaster.wav", "original.wav" };
                 MajInstances.AudioManager.PlaySFX(list[(int)_listConfig.SelectedDiff]);
+                MultiplayerSession.SetDifficulty((int)_listConfig.SelectedDiff);
             }
         }
         void EnterGame()
+        {
+            StartGameScene();
+        }
+        void StartGameScene()
         {
             _cts.Cancel();
             MajInstances.AudioManager.StopSFX("bgm_select.mp3");

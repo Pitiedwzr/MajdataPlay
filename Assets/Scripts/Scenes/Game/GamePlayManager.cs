@@ -1051,8 +1051,29 @@ namespace MajdataPlay.Scenes.Game
                 await UniTask.Yield(token);
             }
             _sceneSwitcher.SetLoadingText(string.Empty);
-           
-            await MajInstances.SceneSwitcher.FadeOutAsync(); //wait the animation
+            await MajInstances.SceneSwitcher.FadeOutAsync(); // All clients fade before signalling they are ready.
+            if (MultiplayerSession.IsConnected)
+            {
+                MultiplayerSession.SetReady(true);
+                MultiplayerSession.RequestStart();
+                _sceneSwitcher.SetLoadingText("Waiting for multiplayer players...");
+                while (MultiplayerSession.ScheduledStartAtServerMs is null)
+                {
+                    token.ThrowIfCancellationRequested();
+                    await UniTask.Yield(PlayerLoopTiming.LastPostLateUpdate);
+                }
+            }
+            var multiplayerStartDelay = MultiplayerSession.GetSecondsUntilScheduledStart();
+            if (multiplayerStartDelay >= 0f)
+            {
+                _sceneSwitcher.SetLoadingText("Waiting for multiplayer start...");
+                while (MultiplayerSession.GetSecondsUntilScheduledStart() > 0f)
+                {
+                    token.ThrowIfCancellationRequested();
+                    await UniTask.Yield(PlayerLoopTiming.LastPostLateUpdate);
+                }
+                _sceneSwitcher.SetLoadingText(string.Empty);
+            }
 
             _audioStartTime = (float)(_timer.ElapsedSecondsAsFloat + _audioSample.CurrentSec) + extraTime;
             _thisFrameSec = -extraTime;

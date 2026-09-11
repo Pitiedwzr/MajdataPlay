@@ -19,6 +19,7 @@ namespace MajdataPlay.Scenes.List
     public class CoverListManager : MonoBehaviour
     {
         public ISongDetail? SelectedSong { get; private set; } = null;
+        public event Action<ISongDetail>? SongSelected;
         public float PreloadCooldownTimer
         {
             get
@@ -286,6 +287,7 @@ namespace MajdataPlay.Scenes.List
             
             var shouldUpdateDisplayer = _listDesiredPos != oldDesiredPos || forceUpdate;
             SelectedSong = _songDetails[_listDesiredPos];
+            SongSelected?.Invoke(SelectedSong!);
             _progressDisplayer.text = $"{_listDesiredPos + 1}/<size=70%>{_songCount}";
             UpdateListConfiguration();
             if (disableAnimation)
