@@ -3,6 +3,8 @@ using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Net.Http;
+using System.Text;
 using System.Threading.Tasks;
 using WebSocketSharp;
 
@@ -11,6 +13,12 @@ namespace MajdataPlay.Net
 {
     internal static class MultiplayerSession
     {
+        public readonly struct RoomInfo
+        {
+            public string Id { get; init; }
+            public string Code { get; init; }
+            public string Name { get; init; }
+        }
         public static bool IsConnected => _socket?.IsAlive == true;
         public static bool IsApplyingRemoteSelection { get; private set; }
         public static string? SelectedSongHash { get; private set; }
@@ -33,6 +41,22 @@ namespace MajdataPlay.Net
             _socket = socket;
             await UniTask.RunOnThreadPool(socket.Connect);
             SendClockPing();
+        }
+
+        public static async UniTask<RoomInfo> CreateRoomAsync(ApiEndpoint endpoint, string roomName)
+        {
+            var content = new StringContent(new JObject { ["name"] = roomName }.ToString(), Encoding.UTF8, "application/json");
+            using var response = await MajEnv.SharedHttpClient.PostAsync(new Uri(endpoint.Url, "multiplayer/rooms"), content);
+            response.EnsureSuccessStatusCode();
+            return await ConnectToRoomAsync(endpoint, JObject.Parse(await response.Content.ReadAsStringAsync()));
+        }
+
+        public static async UniTask<RoomInfo> JoinRoomAsync(ApiEndpoint endpoint, string roomCode)
+        {
+            var content = new StringContent(new JObject { ["code"] = roomCode.Trim().ToUpperInvariant() }.ToString(), Encoding.UTF8, "application/json");
+            using var response = await MajEnv.SharedHttpClient.PostAsync(new Uri(endpoint.Url, "multiplayer/rooms/join"), content);
+            response.EnsureSuccessStatusCode();
+            return await ConnectToRoomAsync(endpoint, JObject.Parse(await response.Content.ReadAsStringAsync()));
         }
 
         public static void Disconnect()
@@ -79,6 +103,29 @@ namespace MajdataPlay.Net
         static void SendClockPing()
         {
             Send(new JObject { ["type"] = "clock_ping", ["clientTimeMs"] = LocalNowMs });
+        }
+
+        static async UniTask<RoomInfo> ConnectToRoomAsync(ApiEndpoint endpoint, JObject room)
+        {
+            var roomId = room.Value<string>("roomId") ?? throw new InvalidOperationException("Room response is missing roomId.");
+            var content = new StringContent(new JObject { ["room_id"] = roomId }.ToString(), Encoding.UTF8, "application/json");
+            using var response = await MajEnv.SharedHttpClient.PostAsync(new Uri(endpoint.Url, "multiplayer/rooms/ticket"), content);
+            response.EnsureSuccessStatusCode();
+            var ticket = JObject.Parse(await response.Content.ReadAsStringAsync()).Value<string>("ticket")
+                ?? throw new InvalidOperationException("Room ticket response is missing ticket.");
+            var builder = new UriBuilder(endpoint.Url)
+            {
+                Scheme = endpoint.Url.Scheme == "https" ? "wss" : "ws",
+                Path = endpoint.Url.AbsolutePath.TrimEnd('/') + "/multiplayer/ws",
+                Query = $"ticket={Uri.EscapeDataString(ticket)}&room_id={Uri.EscapeDataString(roomId)}",
+            };
+            await ConnectAsync(builder.Uri);
+            return new RoomInfo
+            {
+                Id = roomId,
+                Code = room.Value<string>("code") ?? string.Empty,
+                Name = room.Value<string>("name") ?? string.Empty,
+            };
         }
 
         static void Send(JObject message)
