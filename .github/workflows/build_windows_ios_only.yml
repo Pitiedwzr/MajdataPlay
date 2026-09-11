@@ -76,15 +76,18 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  build-ios:
-    name: Build (iOS Unsigned IPA)
-    runs-on: macos-26
+  # -------------------------------------------------------------
+  # 1. Export Xcode project using Unity on Linux (Docker)
+  # -------------------------------------------------------------
+  export-ios-xcode:
+    name: Export iOS Xcode Project
+    runs-on: ubuntu-latest
     env:
       CONFIGURATION: Release
       TARGET_PLATFORM: iOS
 
     steps:
-      - name: Checkout the repository
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -92,9 +95,7 @@ jobs:
       - name: Extract version from unity project
         run: |
           VERSION=$(grep -m1 'bundleVersion:' ProjectSettings/ProjectSettings.asset | awk '{print $2}')
-          VERSION_WITH_HASH="${VERSION}-${GITHUB_SHA::7}"
           echo "BUNDLE_VERSION=$VERSION" >> $GITHUB_ENV
-          echo "BUNDLE_VERSION_WITH_HASH=$VERSION_WITH_HASH" >> $GITHUB_ENV
 
       - name: Cache Unity Library
         uses: actions/cache@v4
@@ -104,7 +105,6 @@ jobs:
           restore-keys: |
             Library-${{ runner.os }}-${{ env.TARGET_PLATFORM }}-
 
-      # Step 1: Export Xcode project from Unity
       - name: Export Unity to Xcode Project
         uses: game-ci/unity-builder@v4
         with:
@@ -115,14 +115,47 @@ jobs:
           buildName: MajdataPlay
           buildsPath: ${{ env.CONFIGURATION }}
 
-      # Step 2: Strip incompatible bitcode from all static libraries (.a)
+      # Upload the exported Xcode project folder for the macOS runner
+      - name: Upload Xcode Project Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Xcode-Project
+          path: ${{ env.CONFIGURATION }}/iOS
+          retention-days: 1
+
+  # -------------------------------------------------------------
+  # 2. Build IPA on macOS using Xcode
+  # -------------------------------------------------------------
+  build-ios-ipa:
+    name: Build (iOS Unsigned IPA)
+    needs: export-ios-xcode
+    runs-on: macos-latest
+    env:
+      CONFIGURATION: Release
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract version hash for artifact naming
+        run: |
+          VERSION=$(grep -m1 'bundleVersion:' ProjectSettings/ProjectSettings.asset | awk '{print $2}')
+          VERSION_WITH_HASH="${VERSION}-${GITHUB_SHA::7}"
+          echo "BUNDLE_VERSION_WITH_HASH=$VERSION_WITH_HASH" >> $GITHUB_ENV
+
+      # Download the exported Xcode project from the Linux step
+      - name: Download Xcode Project
+        uses: actions/download-artifact@v4
+        with:
+          name: Xcode-Project
+          path: ${{ env.CONFIGURATION }}/iOS
+
       - name: Strip bitcode from static libraries
         run: |
           echo "Stripping bitcode from all .a files in exported project..."
           find "${{ env.CONFIGURATION }}/iOS" -name "*.a" -exec xcrun bitcode_strip -r {} -o {} \;
           echo "Bitcode strip complete."
-          
-      # Step 3: Compile the Xcode project without code signing
+
       - name: Build Xcode Project (Unsigned)
         run: |
           set -euo pipefail
@@ -136,17 +169,14 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
 
-      # Step 4: Package .app into an unsigned .ipa
       - name: Package Unsigned IPA
         run: |
           set -euo pipefail
           mkdir -p out Payload
           
-          # Find the compiled .app directory
           APP_PATH=$(find derived_data -name "*.app" -type d | head -n 1)
           echo "Found app at: $APP_PATH"
           
-          # Copy to Payload and zip
           cp -R "$APP_PATH" Payload/
           zip -qry "out/MajdataPlay-iOS-${{ env.BUNDLE_VERSION_WITH_HASH }}-unsigned.ipa" Payload
           rm -rf Payload
