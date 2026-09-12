@@ -1056,10 +1056,10 @@ namespace MajdataPlay.Scenes.Game
             {
                 MultiplayerSession.SetReady(true);
                 MultiplayerSession.RequestStart();
-                _sceneSwitcher.SetLoadingText("Waiting for multiplayer players...");
                 while (MultiplayerSession.ScheduledStartAtServerMs is null)
                 {
                     token.ThrowIfCancellationRequested();
+                    _sceneSwitcher.SetLoadingText(MultiplayerSession.GetWaitingForPlayersText());
                     await UniTask.Yield(PlayerLoopTiming.LastPostLateUpdate);
                 }
             }

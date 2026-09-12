@@ -13,6 +13,41 @@ namespace MajdataPlay.Net
 {
     internal static class MultiplayerSession
     {
+        public readonly struct RoomMember
+        {
+            public string UserId { get; init; }
+            public string Username { get; init; }
+            public int Difficulty { get; init; }
+            public bool IsReady { get; init; }
+            public bool IsConnected { get; init; }
+        }
+
+        public readonly struct RoomState
+        {
+            public string Id { get; init; }
+            public string Code { get; init; }
+            public string Name { get; init; }
+            public string? SongHash { get; init; }
+            public string Phase { get; init; }
+            public RoomMember[] Members { get; init; }
+            public int PlayerCount => Members?.Length ?? 0;
+            public int ReadyPlayerCount
+            {
+                get
+                {
+                    var count = 0;
+                    foreach (var member in Members ?? Array.Empty<RoomMember>())
+                    {
+                        if (member.IsReady)
+                        {
+                            count++;
+                        }
+                    }
+                    return count;
+                }
+            }
+        }
+
         public readonly struct RoomInfo
         {
             public string Id { get; init; }
@@ -25,8 +60,10 @@ namespace MajdataPlay.Net
         public static bool IsApplyingRemoteSelection { get; private set; }
         public static string? SelectedSongHash { get; private set; }
         public static long? ScheduledStartAtServerMs { get; private set; }
+        public static RoomState? CurrentRoom { get; private set; }
         public static event Action<string>? SongSelected;
         public static event Action? StartScheduled;
+        public static event Action<RoomState>? RoomStateChanged;
 
         static readonly ConcurrentQueue<Action> _mainThreadActions = new();
         const int MAX_MAIN_THREAD_ACTIONS_PER_FRAME = 64;
@@ -68,6 +105,7 @@ namespace MajdataPlay.Net
             _socket = null;
             SelectedSongHash = null;
             ScheduledStartAtServerMs = null;
+            CurrentRoom = null;
         }
 
         public static void Pump()
@@ -100,6 +138,25 @@ namespace MajdataPlay.Net
                 return -1f;
             }
             return (float)((ScheduledStartAtServerMs.Value - ServerNowMs) / 1000d);
+        }
+
+        public static string GetWaitingForPlayersText()
+        {
+            var room = CurrentRoom;
+            if (room is null)
+            {
+                return "Waiting for multiplayer players...";
+            }
+            var waitingPlayers = new System.Collections.Generic.List<string>();
+            foreach (var member in room.Value.Members ?? Array.Empty<RoomMember>())
+            {
+                if (!member.IsReady)
+                {
+                    waitingPlayers.Add(member.Username);
+                }
+            }
+            var status = $"Waiting for players ({room.Value.ReadyPlayerCount}/{room.Value.PlayerCount})";
+            return waitingPlayers.Count == 0 ? status : $"{status}: {string.Join(", ", waitingPlayers)}";
         }
 
         static double LocalNowMs => _clock.Elapsed.TotalMilliseconds;
@@ -163,9 +220,13 @@ namespace MajdataPlay.Net
                     return;
                 }
                 var room = message["room"] as JObject;
-                var songHash = room?.Value<string>("songHash");
-                var startAt = room?.Value<long?>("startAtMs");
-                _mainThreadActions.Enqueue(() => ApplyRoomState(songHash, startAt));
+                if (room is null)
+                {
+                    return;
+                }
+                var roomState = ParseRoomState(room);
+                var startAt = room.Value<long?>("startAtMs");
+                _mainThreadActions.Enqueue(() => ApplyRoomState(roomState, startAt));
             }
             catch
             {
@@ -173,8 +234,41 @@ namespace MajdataPlay.Net
             }
         }
 
-        static void ApplyRoomState(string? songHash, long? startAt)
+        static RoomState ParseRoomState(JObject room)
         {
+            var members = room["members"] as JArray;
+            var parsedMembers = members is null ? Array.Empty<RoomMember>() : new RoomMember[members.Count];
+            if (members is not null)
+            {
+                for (var i = 0; i < members.Count; i++)
+                {
+                    var member = members[i] as JObject;
+                    parsedMembers[i] = new RoomMember
+                    {
+                        UserId = member?.Value<string>("userId") ?? string.Empty,
+                        Username = member?.Value<string>("username") ?? "Unknown player",
+                        Difficulty = member?.Value<int?>("difficulty") ?? 0,
+                        IsReady = member?.Value<bool?>("ready") ?? false,
+                        IsConnected = member?.Value<bool?>("connected") ?? true,
+                    };
+                }
+            }
+            return new RoomState
+            {
+                Id = room.Value<string>("roomId") ?? string.Empty,
+                Code = room.Value<string>("code") ?? string.Empty,
+                Name = room.Value<string>("name") ?? "Multiplayer room",
+                SongHash = room.Value<string>("songHash"),
+                Phase = room.Value<string>("phase") ?? "lobby",
+                Members = parsedMembers,
+            };
+        }
+
+        static void ApplyRoomState(RoomState room, long? startAt)
+        {
+            CurrentRoom = room;
+            RoomStateChanged?.Invoke(room);
+            var songHash = room.SongHash;
             if (!string.IsNullOrEmpty(songHash) && songHash != SelectedSongHash)
             {
                 SelectedSongHash = songHash;

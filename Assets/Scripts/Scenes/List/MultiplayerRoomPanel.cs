@@ -14,33 +14,40 @@ namespace MajdataPlay.Scenes.List
         string _status = "Create a room or enter a six-character room code.";
         bool _isSubmitting;
         bool _isCollapsed;
+        Rect _windowRect = new(20, 20, 330, 250);
+        const int WINDOW_ID = 0x4D504C;
 
         void OnGUI()
         {
             if (_isCollapsed)
             {
                 var label = MultiplayerSession.IsConnected ? "Multiplayer (Connected)" : "Multiplayer";
-                if (GUI.Button(new Rect(20, 20, 160, 30), label))
+                if (GUI.Button(new Rect(_windowRect.x, _windowRect.y, 160, 30), label))
                 {
                     _isCollapsed = false;
                 }
                 return;
             }
 
-            var panel = new Rect(20, 20, 330, MultiplayerSession.IsConnected ? 150 : 250);
-            GUI.Box(panel, "Multiplayer");
+            _windowRect.height = MultiplayerSession.IsConnected ? 190 : 250;
+            _windowRect = GUI.Window(WINDOW_ID, _windowRect, DrawWindow, "Multiplayer");
+            _windowRect.x = Mathf.Clamp(_windowRect.x, 0, Mathf.Max(0, Screen.width - _windowRect.width));
+            _windowRect.y = Mathf.Clamp(_windowRect.y, 0, Mathf.Max(0, Screen.height - _windowRect.height));
+        }
 
-            if (GUI.Button(new Rect(panel.xMax - 75, panel.y + 4, 70, 20), "Minimize"))
+        void DrawWindow(int windowId)
+        {
+            if (GUI.Button(new Rect(_windowRect.width - 75, 2, 70, 20), "Minimize"))
             {
                 _isCollapsed = true;
                 return;
             }
 
-            GUILayout.BeginArea(new Rect(35, 50, 300, panel.height - 60));
+            GUILayout.BeginArea(new Rect(15, 30, _windowRect.width - 30, _windowRect.height - 40));
             GUILayout.Label(_status);
             if (MultiplayerSession.IsConnected)
             {
-                GUILayout.Label("Connected - song selection is shared.");
+                DisplayRoomStatus();
                 if (GUILayout.Button("Leave room"))
                 {
                     MultiplayerSession.Disconnect();
@@ -65,6 +72,24 @@ namespace MajdataPlay.Scenes.List
                 GUI.enabled = true;
             }
             GUILayout.EndArea();
+            GUI.DragWindow(new Rect(0, 0, _windowRect.width - 80, 25));
+        }
+
+        static void DisplayRoomStatus()
+        {
+            var room = MultiplayerSession.CurrentRoom;
+            if (room is null)
+            {
+                GUILayout.Label("Connected - waiting for room status.");
+                return;
+            }
+            GUILayout.Label($"{room.Value.Name} ({room.Value.Code})");
+            GUILayout.Label($"Players: {room.Value.PlayerCount}  Ready: {room.Value.ReadyPlayerCount}/{room.Value.PlayerCount}");
+            foreach (var member in room.Value.Members)
+            {
+                var status = !member.IsConnected ? "Disconnected" : member.IsReady ? "Ready" : "Selecting";
+                GUILayout.Label($"{member.Username} - {status}");
+            }
         }
 
         async UniTaskVoid CreateRoomAsync()
