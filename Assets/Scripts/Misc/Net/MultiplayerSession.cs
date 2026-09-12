@@ -20,6 +20,7 @@ namespace MajdataPlay.Net
             public int Difficulty { get; init; }
             public bool IsReady { get; init; }
             public bool IsConnected { get; init; }
+            public bool IsRoundComplete { get; init; }
         }
 
         public readonly struct RoomState
@@ -67,10 +68,14 @@ namespace MajdataPlay.Net
 
         static readonly ConcurrentQueue<Action> _mainThreadActions = new();
         const int MAX_MAIN_THREAD_ACTIONS_PER_FRAME = 64;
+        const double INITIAL_CLOCK_SYNC_INTERVAL_MS = 1_000d;
+        const double CLOCK_SYNC_INTERVAL_MS = 5_000d;
         static readonly Stopwatch _clock = Stopwatch.StartNew();
         static WebSocket? _socket;
         static double _serverOffsetMs;
         static double _lowestRoundTripMs = double.MaxValue;
+        static int _clockSyncSampleCount;
+        static double _nextClockPingAtMs;
 
         public static async UniTask ConnectAsync(Uri websocketUri)
         {
@@ -80,6 +85,8 @@ namespace MajdataPlay.Net
             socket.OnClose += (_, _) => _mainThreadActions.Enqueue(() => ScheduledStartAtServerMs = null);
             _socket = socket;
             await UniTask.RunOnThreadPool(socket.Connect);
+            _lowestRoundTripMs = double.MaxValue;
+            _clockSyncSampleCount = 0;
             SendClockPing();
         }
 
@@ -106,6 +113,8 @@ namespace MajdataPlay.Net
             SelectedSongHash = null;
             ScheduledStartAtServerMs = null;
             CurrentRoom = null;
+            _clockSyncSampleCount = 0;
+            _nextClockPingAtMs = 0;
         }
 
         public static void Pump()
@@ -114,6 +123,10 @@ namespace MajdataPlay.Net
                 && _mainThreadActions.TryDequeue(out var action); i++)
             {
                 action();
+            }
+            if (IsConnected && LocalNowMs >= _nextClockPingAtMs)
+            {
+                SendClockPing();
             }
         }
 
@@ -130,6 +143,7 @@ namespace MajdataPlay.Net
         public static void SetDifficulty(int difficulty) => Send(new JObject { ["type"] = "set_difficulty", ["difficulty"] = difficulty });
         public static void SetReady(bool ready) => Send(new JObject { ["type"] = "set_ready", ["ready"] = ready });
         public static void RequestStart() => Send(new JObject { ["type"] = "request_start" });
+        public static void CompleteRound() => Send(new JObject { ["type"] = "complete_round" });
 
         public static float GetSecondsUntilScheduledStart()
         {
@@ -165,6 +179,9 @@ namespace MajdataPlay.Net
         static void SendClockPing()
         {
             Send(new JObject { ["type"] = "clock_ping", ["clientTimeMs"] = LocalNowMs });
+            _nextClockPingAtMs = LocalNowMs + (_clockSyncSampleCount < 3
+                ? INITIAL_CLOCK_SYNC_INTERVAL_MS
+                : CLOCK_SYNC_INTERVAL_MS);
         }
 
         static async UniTask<RoomInfo> ConnectToRoomAsync(ApiEndpoint endpoint, JObject room)
@@ -216,6 +233,7 @@ namespace MajdataPlay.Net
                             _lowestRoundTripMs = rtt;
                             _serverOffsetMs = serverAt.Value - (sentAt.Value + rtt / 2d);
                         }
+                        _clockSyncSampleCount++;
                     }
                     return;
                 }
@@ -250,6 +268,7 @@ namespace MajdataPlay.Net
                         Difficulty = member?.Value<int?>("difficulty") ?? 0,
                         IsReady = member?.Value<bool?>("ready") ?? false,
                         IsConnected = member?.Value<bool?>("connected") ?? true,
+                        IsRoundComplete = member?.Value<bool?>("roundComplete") ?? false,
                     };
                 }
             }

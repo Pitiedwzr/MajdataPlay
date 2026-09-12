@@ -1849,6 +1849,7 @@ namespace MajdataPlay.Scenes.Game
                 return;
             }
             State = GamePlayStatus.Ended;
+            MultiplayerSession.CompleteRound();
 
             await UniTask.Delay(delayMiliseconds);
             await MajInstances.SceneSwitcher.FadeInAsync();
@@ -1859,6 +1860,7 @@ namespace MajdataPlay.Scenes.Game
         }
         async UniTask ExitToScene(string sceneName, int delayMiliseconds = 0, bool delayBeforeFade = false)
         {
+            MultiplayerSession.CompleteRound();
             var sceneSwitcher = MajInstances.SceneSwitcher;
             if (delayBeforeFade && delayMiliseconds > 0)
             {

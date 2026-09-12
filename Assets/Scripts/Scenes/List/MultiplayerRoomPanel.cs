@@ -87,7 +87,7 @@ namespace MajdataPlay.Scenes.List
             GUILayout.Label($"Players: {room.Value.PlayerCount}  Ready: {room.Value.ReadyPlayerCount}/{room.Value.PlayerCount}");
             foreach (var member in room.Value.Members)
             {
-                var status = !member.IsConnected ? "Disconnected" : member.IsReady ? "Ready" : "Selecting";
+                var status = !member.IsConnected ? "Disconnected" : member.IsRoundComplete ? "Finished" : member.IsReady ? "Ready" : "Selecting";
                 GUILayout.Label($"{member.Username} - {status}");
             }
         }
