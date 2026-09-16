@@ -149,7 +149,7 @@ namespace MajdataPlay.Scenes.List
         {
             _coverListManager = Majdata<CoverListManager>.Instance!;
             _collectionListManager = Majdata<CollectionListManager>.Instance!;
-            gameObject.AddComponent<MultiplayerRoomPanel>();
+            gameObject.AddComponent<MultiplayerTrayView>();
             InitializeCoverListAsync().Forget();
             var selectsfx = MajInstances.AudioManager.GetSFX("bgm_select.mp3");
             if (!selectsfx.IsPlaying)
