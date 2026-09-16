@@ -1,4 +1,4 @@
-﻿using MajdataPlay.Collections;
+using MajdataPlay.Collections;
 using MajdataPlay.Diagnostics;
 using MajdataPlay.Utils;
 using System;
@@ -158,7 +158,11 @@ namespace MajdataPlay.IO
                 {
                     continue;
                 }
-                var touchPosData = 0UL;
+                if (IsPointerOverUI(touch.screenPosition, touch.touchId))
+                {
+                    _touchRecorder.Remove(touch.touchId);
+                    continue;
+                }
                 var touchRadius = touch.radius.magnitude;
                 _touchRecorder.TryGetValue(touch.touchId, out var lastTouchPosData);
                 var isSensorOnly = (lastTouchPosData & (1UL << 63)) != 0;
@@ -257,6 +261,11 @@ namespace MajdataPlay.IO
                 _touchRecorder.Remove(1);
                 return;
             }
+            if (IsPointerOverUI(mouse.position.value))
+            {
+                _touchRecorder.Remove(1);
+                return;
+            }
             _touchRecorder.TryGetValue(1, out var lastTouchPosData);
             var touchPosData = 0UL;
             var isSensorOnly = (lastTouchPosData & (1UL << 63)) != 0;
@@ -327,6 +336,21 @@ namespace MajdataPlay.IO
 
             _touchRecorder[1] = touchPosData;
 #endif
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static bool IsPointerOverUI(Vector2 screenPosition, int pointerId = -1)
+        {
+            if (Scenes.List.MultiplayerTrayView.IsPointerOverTray(screenPosition))
+            {
+                return true;
+            }
+            var es = UnityEngine.EventSystems.EventSystem.current;
+            if (es != null)
+            {
+                return pointerId >= 0 ? es.IsPointerOverGameObject(pointerId) : es.IsPointerOverGameObject();
+            }
+            return false;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -30,11 +30,16 @@ namespace MajdataPlay.Scenes.List
         static readonly Color ACCENT_ORANGE = new(1.00f, 0.65f, 0.00f, 1.00f);
         static readonly Color TEXT_DIM = new(0.70f, 0.75f, 0.82f, 1.00f);
 
+        public static MultiplayerTrayView? Instance { get; private set; }
+
         // UI hierarchy references
         Canvas? _overlayCanvas;
         RectTransform? _trayRoot;
-        Image? _handleStatusDot;
+        RectTransform? _handleRt;
+        RectTransform? _drawerRt;
+        TextMeshProUGUI? _handleStatusDot;
         TextMeshProUGUI? _handleLabel;
+        GameObject? _createdEventSystem;
 
         // Disconnected view
         GameObject? _disconnectedGroup;
@@ -58,6 +63,7 @@ namespace MajdataPlay.Scenes.List
         bool _isOpen;
         bool _isSubmitting;
         bool _wasConnected;
+        float _lastToggleTime;
         string _status = "Create a room or enter a six-character room code.";
         Color _statusColor = TEXT_DIM;
         MotionHandle _slideMotion;
@@ -65,6 +71,8 @@ namespace MajdataPlay.Scenes.List
 
         void Awake()
         {
+            Instance = this;
+            EnsureEventSystem();
             BuildUI();
             MultiplayerSession.RoomStateChanged += OnRoomStateChanged;
             _wasConnected = MultiplayerSession.IsConnected;
@@ -73,16 +81,34 @@ namespace MajdataPlay.Scenes.List
 
         void OnDestroy()
         {
+            if (Instance == this)
+            {
+                Instance = null;
+            }
             MultiplayerSession.RoomStateChanged -= OnRoomStateChanged;
             _slideMotion.TryCancel();
             if (_overlayCanvas != null)
             {
                 Destroy(_overlayCanvas.gameObject);
             }
+            if (_createdEventSystem != null)
+            {
+                Destroy(_createdEventSystem);
+            }
         }
 
         void Update()
         {
+            // Direct mouse click fallback on handle tab
+            if (UnityEngine.InputSystem.Mouse.current != null && UnityEngine.InputSystem.Mouse.current.leftButton.wasPressedThisFrame)
+            {
+                var mousePos = UnityEngine.InputSystem.Mouse.current.position.value;
+                if (_handleRt != null && RectTransformUtility.RectangleContainsScreenPoint(_handleRt, mousePos, null))
+                {
+                    ToggleTray();
+                }
+            }
+
             // Sync status if state changed externally
             var isConnected = MultiplayerSession.IsConnected;
             if (_wasConnected && !isConnected)
@@ -97,6 +123,53 @@ namespace MajdataPlay.Scenes.List
                     UpdateViewContent();
                 }
             }
+        }
+
+        void EnsureEventSystem()
+        {
+            if (UnityEngine.EventSystems.EventSystem.current == null)
+            {
+                var existing = FindObjectOfType<UnityEngine.EventSystems.EventSystem>();
+                if (existing != null)
+                {
+                    UnityEngine.EventSystems.EventSystem.current = existing;
+                    return;
+                }
+
+                var esObj = new GameObject("EventSystem");
+                esObj.AddComponent<UnityEngine.EventSystems.EventSystem>();
+                var module = esObj.AddComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
+                try
+                {
+                    module.AssignDefaultActions();
+                }
+                catch
+                {
+                    // Ignore if actions asset is managed elsewhere
+                }
+                _createdEventSystem = esObj;
+            }
+        }
+
+        public static bool IsPointerOverTray(Vector2 screenPos)
+        {
+            if (Instance == null)
+            {
+                return false;
+            }
+            var cam = Instance._overlayCanvas != null && Instance._overlayCanvas.renderMode != RenderMode.ScreenSpaceOverlay
+                ? Instance._overlayCanvas.worldCamera
+                : null;
+
+            if (Instance._handleRt != null && RectTransformUtility.RectangleContainsScreenPoint(Instance._handleRt, screenPos, cam))
+            {
+                return true;
+            }
+            if (Instance._isOpen && Instance._drawerRt != null && RectTransformUtility.RectangleContainsScreenPoint(Instance._drawerRt, screenPos, cam))
+            {
+                return true;
+            }
+            return false;
         }
 
         void BuildUI()
@@ -132,13 +205,14 @@ namespace MajdataPlay.Scenes.List
             // 4. Main Drawer Panel
             var drawerPanel = new GameObject("DrawerPanel", typeof(RectTransform), typeof(Image));
             drawerPanel.transform.SetParent(trayRootObj.transform, false);
-            var drawerRt = (RectTransform)drawerPanel.transform;
-            drawerRt.anchorMin = Vector2.zero;
-            drawerRt.anchorMax = Vector2.one;
-            drawerRt.sizeDelta = Vector2.zero;
-            drawerRt.anchoredPosition = Vector2.zero;
+            _drawerRt = (RectTransform)drawerPanel.transform;
+            _drawerRt.anchorMin = Vector2.zero;
+            _drawerRt.anchorMax = Vector2.one;
+            _drawerRt.sizeDelta = Vector2.zero;
+            _drawerRt.anchoredPosition = Vector2.zero;
             var drawerImg = drawerPanel.GetComponent<Image>();
             drawerImg.color = BG_COLOR;
+            drawerImg.raycastTarget = true;
 
             // Header bar
             BuildHeader(drawerPanel.transform, font);
@@ -166,30 +240,42 @@ namespace MajdataPlay.Scenes.List
         {
             var handleObj = new GameObject("HandleTab", typeof(RectTransform), typeof(Image), typeof(Button));
             handleObj.transform.SetParent(parent, false);
-            var handleRt = (RectTransform)handleObj.transform;
-            handleRt.anchorMin = new Vector2(0f, 0.5f);
-            handleRt.anchorMax = new Vector2(0f, 0.5f);
-            handleRt.pivot = new Vector2(1f, 0.5f);
-            handleRt.sizeDelta = new Vector2(HANDLE_WIDTH, HANDLE_HEIGHT);
-            handleRt.anchoredPosition = Vector2.zero;
+            _handleRt = (RectTransform)handleObj.transform;
+            _handleRt.anchorMin = new Vector2(0f, 0.5f);
+            _handleRt.anchorMax = new Vector2(0f, 0.5f);
+            _handleRt.pivot = new Vector2(1f, 0.5f);
+            _handleRt.sizeDelta = new Vector2(HANDLE_WIDTH, HANDLE_HEIGHT);
+            _handleRt.anchoredPosition = Vector2.zero;
 
             var handleImg = handleObj.GetComponent<Image>();
             handleImg.color = new Color(0.10f, 0.12f, 0.18f, 0.95f);
+            handleImg.raycastTarget = true;
 
             var handleBtn = handleObj.GetComponent<Button>();
             handleBtn.targetGraphic = handleImg;
+            var colors = handleBtn.colors;
+            colors.normalColor = new Color(0.10f, 0.12f, 0.18f, 0.95f);
+            colors.highlightedColor = new Color(0.18f, 0.22f, 0.32f, 1.0f);
+            colors.pressedColor = new Color(0.05f, 0.06f, 0.10f, 1.0f);
+            handleBtn.colors = colors;
             handleBtn.onClick.AddListener(ToggleTray);
 
-            // Status Dot
-            var dotObj = new GameObject("StatusDot", typeof(RectTransform), typeof(Image));
+            // Status Dot (clean vector circle bullet)
+            var dotObj = new GameObject("StatusDot", typeof(RectTransform), typeof(TextMeshProUGUI));
             dotObj.transform.SetParent(handleObj.transform, false);
             var dotRt = (RectTransform)dotObj.transform;
             dotRt.anchorMin = new Vector2(0.5f, 1f);
             dotRt.anchorMax = new Vector2(0.5f, 1f);
-            dotRt.anchoredPosition = new Vector2(0f, -22f);
-            dotRt.sizeDelta = new Vector2(16f, 16f);
-            _handleStatusDot = dotObj.GetComponent<Image>();
+            dotRt.pivot = new Vector2(0.5f, 1f);
+            dotRt.anchoredPosition = new Vector2(0f, -8f);
+            dotRt.sizeDelta = new Vector2(24f, 24f);
+            _handleStatusDot = dotObj.GetComponent<TextMeshProUGUI>();
+            _handleStatusDot.text = "●";
+            _handleStatusDot.fontSize = 18;
+            _handleStatusDot.alignment = TextAlignmentOptions.Center;
             _handleStatusDot.color = TEXT_DIM;
+            _handleStatusDot.raycastTarget = false;
+            if (font != null) _handleStatusDot.font = font;
 
             // Handle Text
             var textObj = new GameObject("HandleLabel", typeof(RectTransform), typeof(TextMeshProUGUI));
@@ -205,6 +291,7 @@ namespace MajdataPlay.Scenes.List
             _handleLabel.fontSize = 20;
             _handleLabel.alignment = TextAlignmentOptions.Center;
             _handleLabel.color = Color.white;
+            _handleLabel.raycastTarget = false;
             if (font != null) _handleLabel.font = font;
         }
 
@@ -600,6 +687,11 @@ namespace MajdataPlay.Scenes.List
 
         public void ToggleTray()
         {
+            if (Time.unscaledTime - _lastToggleTime < 0.25f)
+            {
+                return;
+            }
+            _lastToggleTime = Time.unscaledTime;
             SetOpen(!_isOpen);
         }
 
