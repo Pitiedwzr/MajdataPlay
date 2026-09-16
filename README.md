@@ -1,4 +1,4 @@
-# MajdataPlay
+# MajdataPlay - Multiplayer Fork
 
 ![license GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)
 ![GitHub Release](https://img.shields.io/github/v/release/LingFeng-bbben/MajdataPlay)
@@ -7,6 +7,12 @@
 
 > [!NOTE]
 > This software has no affair with the `big S four letter` company, please support the arcade whenever you can.
+
+## Features in this fork
+
+- Multiplayer ([Need server support](https://github.com/Pitiedwzr/MajdataServer/tree/feature/multiplayer-sync))
+
+## Orignal Readme
 
 A Simai Player.
 
