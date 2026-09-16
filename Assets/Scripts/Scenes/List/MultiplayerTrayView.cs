@@ -1,7 +1,7 @@
 using Cysharp.Threading.Tasks;
 using LitMotion;
 using MajdataPlay.Net;
-using MajdataPlay.Game;
+using MajdataPlay.Databases;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -94,7 +94,7 @@ namespace MajdataPlay.Scenes.List
 
         void BuildUI()
         {
-            var font = Majdata<GameRuntime>.Instance?.Fonts?.Default;
+            var font = Majdata<GameRuntime>.Instance?.Fonts?.Default ?? TMP_Settings.defaultFontAsset;
 
             // 1. Overlay Canvas
             var canvasObj = new GameObject("MultiplayerTrayCanvas");
