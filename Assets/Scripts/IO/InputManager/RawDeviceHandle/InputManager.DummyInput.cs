@@ -163,6 +163,7 @@ namespace MajdataPlay.IO
                     _touchRecorder.Remove(touch.touchId);
                     continue;
                 }
+                var touchPosData = 0UL;
                 var touchRadius = touch.radius.magnitude;
                 _touchRecorder.TryGetValue(touch.touchId, out var lastTouchPosData);
                 var isSensorOnly = (lastTouchPosData & (1UL << 63)) != 0;
