@@ -57,6 +57,7 @@ namespace MajdataPlay.Scenes.List
         // State
         bool _isOpen;
         bool _isSubmitting;
+        bool _wasConnected;
         string _status = "Create a room or enter a six-character room code.";
         Color _statusColor = TEXT_DIM;
         MotionHandle _slideMotion;
@@ -66,6 +67,7 @@ namespace MajdataPlay.Scenes.List
         {
             BuildUI();
             MultiplayerSession.RoomStateChanged += OnRoomStateChanged;
+            _wasConnected = MultiplayerSession.IsConnected;
             UpdateViewContent();
         }
 
@@ -83,6 +85,11 @@ namespace MajdataPlay.Scenes.List
         {
             // Sync status if state changed externally
             var isConnected = MultiplayerSession.IsConnected;
+            if (_wasConnected && !isConnected)
+            {
+                SetStatus("Disconnected from room.", ACCENT_ORANGE);
+            }
+            _wasConnected = isConnected;
             if (_connectedGroup != null && _disconnectedGroup != null)
             {
                 if (isConnected != _connectedGroup.activeSelf)
@@ -303,7 +310,14 @@ namespace MajdataPlay.Scenes.List
 
             CreateLabel(joinCard.transform, "Room Code", 14, TEXT_DIM, new Vector2(0f, -44f), font);
             _roomCodeInput = CreateInputField(joinCard.transform, "RoomCodeInput", string.Empty, "6-LETTER CODE", 6, new Vector2(0f, -80f), font);
-            _roomCodeInput.onValueChanged.AddListener(val => _roomCodeInput.text = val.ToUpperInvariant());
+            _roomCodeInput.onValueChanged.AddListener(value =>
+            {
+                var normalized = value.ToUpperInvariant();
+                if (normalized != value)
+                {
+                    _roomCodeInput.SetTextWithoutNotify(normalized);
+                }
+            });
 
             var (joinBtn, _) = CreateButton(joinCard.transform, "JoinBtn", "Join Room", ACCENT_GREEN, Color.black, font);
             _joinRoomBtn = joinBtn;
@@ -611,6 +625,7 @@ namespace MajdataPlay.Scenes.List
         {
             PlaySFX("answer.wav");
             MultiplayerSession.Disconnect();
+            _wasConnected = false;
             SetStatus("Left room.", TEXT_DIM);
             UpdateViewContent();
         }
