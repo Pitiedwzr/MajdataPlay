@@ -101,7 +101,7 @@ namespace MajdataPlay.Scenes.List
 
         void BuildUI()
         {
-            var font = Majdata<GameRuntime>.Instance?.Fonts?.Default ?? TMP_Settings.defaultFontAsset;
+            var font = Majdata<GameRuntime>.Instance?.LocalizedFonts?.Default ?? TMP_Settings.defaultFontAsset;
 
             // 1. Overlay Canvas
             var canvasObj = new GameObject("MultiplayerTrayCanvas");
